@@ -1,0 +1,14 @@
+"0","# AIC
+listaAIC<-steprepetidobinaria(data=stroke_data,
+                           vardep=var_dep,listconti=list_var,
+                           sinicio=12340,
+                           sfinal=12390,porcen=0.8,criterio=""AIC"")
+"
+"2","glm.fit: algorithm did not converge"
+"2","glm.fit: algorithm did not converge"
+"2","glm.fit: fitted probabilities numerically 0 or 1 occurred"
+"2","glm.fit: algorithm did not converge"
+"2","glm.fit: algorithm did not converge"
+"2","glm.fit: algorithm did not converge"
+"2","
+"

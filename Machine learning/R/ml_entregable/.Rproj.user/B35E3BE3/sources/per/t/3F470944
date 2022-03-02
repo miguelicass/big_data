@@ -1,0 +1,32 @@
+{
+    "id": "3F470944",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1621468669587.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "expression": "uni_predi",
+        "caption": "uni_predi",
+        "totalObservations": 24545,
+        "displayedObservations": 24545,
+        "variables": 30,
+        "cacheKey": "C473C1A7",
+        "object": "uni_predi",
+        "environment": "",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=uni_predi&cache_key=C473C1A7&max_cols=50",
+        "preview": 0
+    },
+    "folds": "",
+    "lastKnownWriteTime": 3981517710264054851,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1621468669587,
+    "read_only": false,
+    "read_only_alternatives": []
+}

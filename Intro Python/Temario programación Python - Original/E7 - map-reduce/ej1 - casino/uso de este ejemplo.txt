@@ -1,0 +1,17 @@
+1. Lo siguiente sirve para generar la muestra, creando el archivo casino.txt
+
+   C:\...> python genera_pares.py 
+
+2. Ahora, el funcionamiento básico típico de map-reduce:
+
+   C:\...> python apuestas_basico.py < casino.txt
+
+3. Este funcionamiento básico se puede procesar a posteriori, 
+   almacenando el resultado en un archivo intermedio:
+
+   C:\...> python apuestas_basico.py < casino.txt > lanzamientos.txt
+   C:\...> python estadistica_dados.py lanzamientos.txt
+
+4. Y ahora, con el archivo dado en el programa y con postprocesamiento:
+
+   C:\...> python total_apuestas.py

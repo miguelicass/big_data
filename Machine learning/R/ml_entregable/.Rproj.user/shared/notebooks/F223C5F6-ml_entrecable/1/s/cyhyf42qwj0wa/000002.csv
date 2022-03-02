@@ -1,0 +1,8 @@
+"0","# lista de variables"
+"0","# dput(names(data))"
+"0","list_int <- c(""id"")"
+"0","list_cont <- c(""avg_glucose_level"", ""bmi"", ""age"")"
+"0","list_cat <- c(""gender"", ""hypertension"", ""heart_disease"", ""ever_married"","
+"0","              ""work_type"", ""Residence_type"", ""smoking_status"")"
+"0","var_dep <- c(""stroke"")"
+"0","col_var_dep<-data[,var_dep]"

@@ -1,0 +1,24 @@
+1. Uso básico:
+
+   Con el main así:
+
+    if __name__ == '__main__':
+        MRCharCount.run()
+
+   C:\...> python cuenta_pares.py < pride_and_prejudice.txt
+
+2. Otro uso, para reutilizar el resultado producido por map-reduce:
+
+   Con el main así:
+
+    if __name__ == '__main__':
+        lista, dicc = obtener_pares("pride_and_prejudice.txt")
+        print(lista)
+        print(diccionario)
+
+   C:\...> python cuenta_pares.py
+
+   No hace falta dar el archivo de trabajo, porque se indica en el programa, con args= ...
+
+3. Dentro de spider, se puede reutilizar el resultado, guardado en las variables lista y diccionario
+

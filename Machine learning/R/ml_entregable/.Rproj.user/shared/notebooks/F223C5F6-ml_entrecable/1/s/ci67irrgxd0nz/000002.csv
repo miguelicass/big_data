@@ -1,0 +1,2 @@
+"0","# Make Valid Column Names "
+"0","colnames(stroke_data) <- make.names(colnames(stroke_data))"

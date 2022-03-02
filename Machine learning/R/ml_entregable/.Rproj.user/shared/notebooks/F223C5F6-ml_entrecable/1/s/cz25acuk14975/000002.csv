@@ -1,0 +1,5 @@
+"0","stroke_data<- dummy.data.frame(stroke_data, list_cat, sep = ""."")"
+"0",""
+"0","#eliminamos los dummies pocos representados"
+"0","stroke_data$work_type.Never_worked <- NULL"
+"0",""

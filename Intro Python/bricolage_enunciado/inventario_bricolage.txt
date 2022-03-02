@@ -1,0 +1,6 @@
+F01//25//70//100//001_AA//Tornillos con cabeza grande
+F02//2//3//10//001_AB//Alicates grandes
+F03//20//35//80//021_CA//Arandelas delgadas para tornillos de debeza grande
+F04//5//27//30//031_ZA//Alcayatas planas en paquetes de 25
+F05//200//458//1000//061_ZU//caja de chinchetas
+F06//25//45//100//034_CA//martillo de mediano

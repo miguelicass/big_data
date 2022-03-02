@@ -1,0 +1,35 @@
+
+En entorno macOS
+
+
+1. Generamos el archivo deaths-filter-by-year.txt desde jupyter generando la función:
+
+	read_data_mr("./annual-number-of-deaths-by-cause.csv", 2007)
+
+  
+  - También desde la terminal con el comando:
+
+	user$ python read_data_mr("./annual-number-of-deaths-by-cause.csv", 2007)
+
+
+
+2. Ahora, el funcionamiento básico típico de map-reduce:
+
+	user$ python ejerMapReduce.py < deaths-filter-by-year.txt > result.txt
+
+
+
+3. Este funcionamiento básico se puede procesar para mostrarlo en un formato de diccionario que devolverá la siguiente función, desde jupyter generando la función:
+
+	read_result_mr("./annual-number-of-deaths-by-cause.csv", "./result.txt", 2007)
+
+
+  - También desde la terminal con el comando:
+	
+	user$ python read_result_mr("./annual-number-of-deaths-by-cause.csv", "./result.txt", 2007)
+
+
+
+
+
+

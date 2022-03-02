@@ -1,0 +1,32 @@
+{
+    "id": "4CAAE49A",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1621468654418.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "expression": "unipredi",
+        "caption": "unipredi",
+        "totalObservations": 2310,
+        "displayedObservations": 2310,
+        "variables": 98,
+        "cacheKey": "59E4AC59",
+        "object": "unipredi",
+        "environment": "",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=unipredi&cache_key=59E4AC59&max_cols=50",
+        "preview": 0
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1610970340,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1621468654418,
+    "read_only": false,
+    "read_only_alternatives": []
+}

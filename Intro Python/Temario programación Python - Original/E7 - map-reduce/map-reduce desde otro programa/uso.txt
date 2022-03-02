@@ -1,0 +1,3 @@
+Desde la consola de Anaconda:
+
+...> python B5_1_2_matriz_duracion_llamadas_mr_ejecucion.py llamadas2020.txt

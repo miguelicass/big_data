@@ -1,0 +1,899 @@
+---
+title: "Machine Learning"
+author: "Miguel Ángel Castaño Ibáñez"
+date: "5/17/2021"
+output: pdf_document
+---
+
+# Librerías
+Cargo todas las librerías utlilizadas para para este ejercicio
+
+```{r}
+# LIBRERIES
+
+suppressPackageStartupMessages({
+# install
+# install.packages("reshape")
+# install.packages('doParallel')
+
+# load
+library(ggplot2)
+library(inspectdf) # EDAs automaticos
+library(plotly)
+library(dummies)
+library(MASS)
+library(caret)
+library(plyr)
+library(reshape)
+library(randomForest)
+library(tinytex)
+library(doParallel)
+library(evaluate)
+})
+```
+
+# Ejercicios
+
+A continuacion, los ejercicios propuestos a resolver en este modulo
+
+a) Se deben realizar pruebas suficientes para obtener una buena selección de variables, obteniendo uno o varios conjuntos de variables tentativos
+
+
+b) Se requiere la comparación entre los mejores algoritmos y regresión logística 
+
+
+c) Se comprobará el efecto de la variación de los parámetros básicos de cada
+algoritmo (tuneado) (número de nodos en redes, shrink en gradient boosting, etc.).
+
+
+d) Los algoritmos a utilizar son obligatoriamente y como mínimo:
++ Redes Neuronales
++ Regresión Logística
++ Bagging
++ Random Forest
++ Gradient Boosting
++ Support Vector Machines
+
+* También si se quiere y para comprender los datos se puede probar con un simple árbol pero no es obligatorio.
+
+
+e) Es necesario utilizar validación cruzada, validación cruzada repetida o como mínimo training/test repetido.
+
+
+f) Es necesario hacer alguna prueba de ensamblado.
+
+
+# Lectura ficheros
+Nuestro dataset contiene una muestra de 5000 pacientes de diferentes edades, donde podemos observar quien de ellos a sufrido un ictus. Este dataset presenta 12 variables, 11 inputs y una dependiente objetivo binaria.
+
+Fuente: *https://www.kaggle.com/fedesoriano/stroke-prediction-dataset*
+
+Cargamos los ficheros donde están el conjunto de entrenamiento y el de test, ademas de tener un dataset solo el id y la variable objetivo
+
+```{r}
+data <- read.csv("./healthcare-dataset-stroke-data.csv")
+```
+
+# Analisís exploratorio (EDA) 
+Antes de empezar a crear los modelos vamos a hacer un analisis exploratorio de nuestra variable por si fuera necesario, imputar valores o cambiar el tipo de alguna de estas.
+ 
+```{r}
+
+#compruebo los tipos
+str(data) 
+
+```
+
+Tras los resultados vistos en el apartado anterior podemos concluir a llevar a factor aquellas variables que consideramos categoricas, y transformar a "Yes/No", nuestra variable objetivo binaria.
+
+```{r, warning=FALSE}
+
+# transfromamos en yes or no la variable obj
+data$stroke<-ifelse(data$stroke==1,"Yes","No")
+
+# convert to factor
+data[,c(2,4,5,6,7,8,11,12)] <- lapply(data[,c(2,4,5,6,7,8,11,12)], factor)
+
+# convert to nummeric
+data$bmi <- as.numeric(data$bmi)
+
+# comprobar tipos
+str(data) 
+
+# Comprobar observaciones de la var objetivo
+length(filter(data, stroke == "Yes")[,1])
+length(filter(data, stroke == "No")[,1])
+
+
+```
+
+El numero de casos que si presentan ataque cerebral es muy pequeño respecto al numero de los que no, y esto prodria llevarnos a conclusiones sesgadas, pese a tener un accuracy bastante, por ello debemos ir con cuidado. Tras la eleccion del modelo seria conveniente comprobar este modelos con un dataset mas grande de datos.
+
+En segundo lugar vamos a comprobar las variables categoricas que hay, la correlacion de variable por si fuera necesario quitar alguna de estas y el numero de NAs.
+
+```{R}
+# Horizontal bar plot for categorical column composition
+x <- inspect_cat(data)
+show_plot(x)
+
+# Correlation betwee numeric columns + confidence intervals
+x <- inspect_cor(data)
+show_plot(x)
+
+# Occurence of NAs in each column ranked in descending order
+x <- inspect_na(data)
+show_plot(x)
+```
+
+
+# Feature engineering
+
+Nuestro primer paso para a aplicar feature engineering a nuestras variables es separarlas en continuas, categoricas y objetivo. La variable id no tiene relevancia en este dataset por ello he decidido dejarla fuera del analisis.
+```{r}
+# lista de variables
+# dput(names(data))
+list_int <- c("id")
+list_cont <- c("avg_glucose_level", "bmi", "age")
+list_cat <- c("gender", "hypertension", "heart_disease", "ever_married",
+              "work_type", "Residence_type", "smoking_status")
+var_dep <- c("stroke")
+col_var_dep<-data[,var_dep]
+```
+
+## Estandarización de variables continuas
+
+Estandarizamos las variables continuas con valores desde 0 hasta 1
+
+```{r}
+# calc estandarizacion
+means <-apply(data[,list_cont],2,mean,na.rm=TRUE)
+sds<-sapply(data[,list_cont],sd,na.rm=TRUE)
+
+# var continuas estandarizadas
+stroke_data <- scale(data[,list_cont], center = means, scale = sds)
+# stroke_data <- data.frame(cbind(stroke_data,col_var_dep))
+
+# union continuas y categoricas
+index_cont<-which(colnames(data)%in%list_cont) # index cont
+stroke_data<-cbind(stroke_data,data[,-index_cont]) # join
+```
+
+## Eliminacion de missings
+
+En lugar de imputar las observaciones missing he considerado eliminarlas del dataset a estudiar
+
+```{r}
+stroke_data<-na.omit(stroke_data,(!is.na(stroke_data)))
+
+# comprobamos suficientes observaciones YES y NO
+length(filter(stroke_data, stroke == "Yes")[,1])
+length(filter(stroke_data, stroke == "No")[,1])
+```
+
+## Dummies
+
+Vamos a aplicar dummies a las variables categoricas, tratandolas de convertir a binarias mediante metodologia one-hot, es decir valor 1 si se cumple la observacion para esa variable categoriaca y 0 cuando no.
+
+```{r, warning=FALSE}
+stroke_data<- dummy.data.frame(stroke_data, list_cat, sep = ".")
+
+#eliminamos los dummies pocos representados
+stroke_data$work_type.Never_worked <- NULL
+
+```
+
+He decidico eliminar las dummi work_type.Never_worked, ya que apenas hay observaciones para esta variable.
+
+Por ultimo para evitar futuros conflictos aplico la siguiente funcion, para cambiar el nombre de las columnas que puedan tener palabras reservadas.
+
+```{r}
+# Make Valid Column Names 
+colnames(stroke_data) <- make.names(colnames(stroke_data))
+```
+
+# Seleccion de variables
+En este paso coincidiendo con el apartado a) vamos a tratar de obtener las variables mas relevantes para generar modelos en nuestro dataset.
+
+En primer lugar vamos a aplicar el algoritmo stepwise backward and fordwar y con criterio tonto AIC como BIC para ver cuales son las variables que mas importancia tienen en la regresion logistica.
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+# Selección de variables por el metodo stepAIC
+full<-glm(factor(stroke)~.,data=stroke_data,family = binomial(link="logit"))
+null<-glm(factor(stroke)~1,data=stroke_data,family = binomial(link="logit"))
+
+# aplicamos stepAIC
+seleccionAIC<-stepAIC(null,scope=list(upper=full),direction="both")
+seleccionBIC<-stepAIC(null,scope=list(upper=full),direction="both")
+
+```
+
+Obtenemos la importancia de las variables calculadas para nuestro modelo mediante estos metodos
+
+```{r}
+
+# AIC
+seleccionAIC
+
+# BIC
+seleccionBIC
+
+```
+
+Otra forma de poder seleccionar estas variables es repitiendo el proceso un numero determinado de veces, obteniendo varios modelos y observar las variables mas frecuentes en estos.
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+source("funcion steprepetido binaria.R")
+
+list_var <- names(stroke_data[,-24]) # dput
+
+# AIC
+listaAIC<-steprepetidobinaria(data=stroke_data,
+                           vardep=var_dep,listconti=list_var,
+                           sinicio=12340,
+                           sfinal=12390,porcen=0.8,criterio="AIC")
+
+tablaAIC <- listaAIC[[1]]
+
+# BIC
+listaBIC <- steprepetidobinaria(data=stroke_data,
+                              vardep=var_dep,listconti=list_var,
+                              sinicio=12340,
+                              sfinal=12390,porcen=0.8,criterio="BIC")
+
+tablaBIC <- listaBIC[[1]]
+
+```
+
+Obtenemos la seleccion de variables más repetidas y su frecuencia
+
+```{r}
+# table freq
+head(tablaAIC,5)
+head(tablaBIC,5)
+```
+
+
+Tras los calculos anteriores he decidido quedarme con las variables obtenidas en metodo stepwise repetido con criterio AIC, ya que parece menos aqgresivo descartando variables. En concreto he decidido quedarme con las siguiente seleccion variables mostradas a continucion, ya que de 51 veces que repetimos el algoritmo, la ganadaora obtuvo una frecuencia de 11 veces frente al resto. Por ejemplo la 2ª seleccion fue repetida tan solo 6 veces.
+
+```{r}
+# c("age", "avg_glucose_level", "hypertension.0", "work_type.Self.employed", 
+#   "smoking_status.smokes", "heart_disease.0")
+
+# factor(stroke) ~ age + avg_glucose_level + hypertension.0 + 
+#   work_type.Self.employed + smoking_status.smokes + heart_disease.0
+```
+
+# Modelos predictivos
+
+En este apartado vamos a crear todos los modelos y realizarles un "tuneado" utilizand ola libreira caret. Asi, conseguiremos escoger los parametros adecuados obteniendo como resultado el mejor modelo, para en apartados posteriores poder hacer un analisis de sesgo-varianza. En este apartado vamos a cumplir con los apartados c), d) y e).
+
+Para este proceso he decidido solo utilizar validacion cruzada, para poder agilizar tiempo en el calculo de los modelos. Aun con ello esto podria llevar a un sobreajuste de los algoritmos. En apartado del analisis sesgo-varianza utilizare la técnica de validación cruzada repetida, una vez ya tengamos decididos los parametros tras el "tuneo". Vamos a aplicar validacion cruzada sin repetir esto aligerara los calculos pero hay que tener en cuenta que perderemos control sobre la varianza.s
+
+*Es posible que algunos resultados no coincidan con respecto a las pruebas de integracion del codigo, debido a utilizar doParallel, ya que esto puede causar que las semillas no funciona como se espera y por tanto pueda cambiar un poco nuestros resultados*
+
+## REGRESION LOGÍSTICA
+
+Empezamos con la regresión logísstica, vamos a utilizar la validacion cruzada 4 grupos, para asegurarnos de tener un numero sifuiciente de observaciones "Yes/No" en cada grupo test.
+
+En este apartado el único tuneo posible son la semilla y los grupos para la "cross validation". He seleccionado los que se muestran a continuación, ya que son lo que mejor resultados me han dado en las pruebas de integración.
+
+```{r}
+set.seed(1234967)
+
+control<-trainControl(method = "cv", 
+                      number=4,savePredictions = "all") # repeats=5
+
+reg_log <- train(factor(stroke) ~ age + avg_glucose_level + hypertension.0 
+                 + work_type.Self.employed + smoking_status.smokes 
+                 + heart_disease.0,
+                 data=stroke_data,method="glm",trControl=control)
+
+reg_log
+```
+
+## RED
+
+Usamos el paquete "avNNet" para utilizar 5 redes y hacer por lo tanto un promedio de estas para obtener nuestros resultados, evitando sesgar nuestros datos
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+control<-trainControl(method = "cv", 
+                      number=4,savePredictions = "all")
+
+nnetgrid <- expand.grid(size=c(5,10,15,20),decay=c(0.01,0.1,0.001),bag=F)
+
+avnnet <- train(factor(stroke) ~ age + avg_glucose_level + hypertension.0 
+                + work_type.Self.employed + smoking_status.smokes 
+                + heart_disease.0,
+                data=stroke_data, method="avNNet",linout = TRUE,maxit=100,
+                trControl=control,repeats=5, tuneGrid=nnetgrid)
+ 
+```
+
+Mostramos a continuación el resultado y llegamos a la conclusión de que los mejores parametros para nuestra red es decay=0.1 y un tamaño de la red de 5 nodos ya que obtiene el mismo accuracy, obteniendo un modelo mucho mas sencillo
+```{r}
+avnnet
+```
+
+## ÁRBOL
+
+Este metodo no vamos a profundizar mucho ya que posteriormente tenemos otros modelos compuestos por banggin, random forest, gradient boosting, etc.
+
+```{r}
+control<-trainControl(method = "cv",number=4,savePredictions = "all")
+
+arbolgrid <-  expand.grid(cp=c(0,0.001,0.01,0.1))
+
+arbol <- train(factor(stroke) ~ age + avg_glucose_level + hypertension.0 
+               + work_type.Self.employed + smoking_status.smokes 
+               + heart_disease.0,
+               data=stroke_data, method="rpart",minbucket=30,
+               trControl=control,tuneGrid=arbolgrid)
+
+arbol
+```
+
+Podemos observar que el parametro "cp" para este modelo es 0.1 y minbucket = 30.
+
+## BANGGIN
+
+El siguiente modelo es un modelo random forest, el más común de los arboles, pero con la peculiaridad de que mtry = 6 (numero de variables del modelo). Mantenemos la misma semilla, ya que es la que mejor resultado aporta  para crear el modelo y 4 grupos en la validacion cruzada. Y los parametros mas optimos tras el tuneado son ntree=1000 y nodesize=10.
+
+```{r}
+rfgrid<-expand.grid(mtry=c(6))
+
+control<-trainControl(method = "cv",number=4,savePredictions = "all",
+                      classProbs=TRUE)
+
+bangging <-  train(factor(stroke) ~ age + avg_glucose_level + hypertension.0 
+                  + work_type.Self.employed + smoking_status.smokes 
+                  + heart_disease.0, data=stroke_data,method="rf",
+                  trControl=control,tuneGrid=rfgrid,linout = FALSE,
+                  ntree=1000,nodesize=10,replace=TRUE) 
+
+bangging
+```
+
+## RANDOM FORES
+
+Para este algoritmo el proceso de tuneo, ha sido importante estudiar tanto el mtry, como el numero de arboles generados. Otro parametro para tunear podria ser nodesize ya que nos indica el umero maximo de nodos generados y mara la complejidad de los arboles. Mantenemos la misma semilla para modelo anteriores junto a los 4 grupos para la validacion cruzada.
+
+```{r}
+rfgrid<-expand.grid(mtry=c(3,4,5,6))
+
+control<-trainControl(method = "cv",number=4,savePredictions = "all", 
+                      classProbs=TRUE)
+
+rf <- train(factor(stroke) ~ age + avg_glucose_level + hypertension.0 
+            + work_type.Self.employed + smoking_status.smokes 
+            + heart_disease.0, data=stroke_data,method="rf",
+            trControl=control,tuneGrid=rfgrid,linout = FALSE,ntree=500,
+            nodesize=12,replace=TRUE,importance=TRUE)
+
+rf
+```
+
+Como conclusión podemos ver como nuestro nuestro modelo tiene una mayor tasa de aciertos con 500 tras probar desde 100 hasta 1000 en intervalos de 100. Por otro lado, vamos a maracar un node size de 12 ya que conseguimos una acuraccy mas elevada sin sobreajustar. Por último, mtry = 3, ya que este también nos aporta un número más elevado de aciertos haciendo el bagging para generar el modelo mas simple y con menos variables, solo el 50% de las disponibles.
+
+## GRADIENT BOOSTING
+
+Para este modelo construiremos arboles basados en la dirección de decrecimiento dada por el negativo del gradiente, de la función de error. Seguimos utilizando la validacion cruzada en 4 grupos y manteniendo la mism semilla de modelos anteriores.
+```{r}
+gbmgrid<-expand.grid(shrinkage=c(0.1,0.05,0.03,0.01,0.001),
+                     n.minobsinnode=c(5,10,20),
+                     n.trees=c(100,500,1000,5000),
+                     interaction.depth=c(2))
+
+control<-trainControl(method = "cv",number=4,savePredictions = "all",
+                     classProbs=TRUE)
+
+gbm <- train(factor(stroke) ~ age + avg_glucose_level + hypertension.0 
+             + work_type.Self.employed + smoking_status.smokes 
+             + heart_disease.0,
+              data=stroke_data,
+              method="gbm",trControl=control,tuneGrid=gbmgrid,
+              distribution="bernoulli", bag.fraction=1,verbose=FALSE)
+
+gbm
+
+plot(gbm)
+```
+
+En el gráfico podemos observar como el numero maximo de nodos no tiene apenas importancia para nuestro modelo. Mayor relecancia adquiere el numero de arboles o iteraciones que se usa para construir el modelo. Por último, el parametro mas importante shrinkage que mide la velocidad de ajuste.
+
+Para nuestro datos tras el tuneo he decidido seleccionar como ganadores para construir mi modelo con un accuracy de 0.9578328 con los siguientes parametros:
+
+shrinkage = 0.015, minobsinnode = 5,  trees = 100,
+
+He seleccionado estos, ya que construye un modelo menos complejo para nuestros datos, pese a tener la misma tasa de aciertos que:
+
+shrinkage = 0.100, minobsinnode = 20,  trees = 100
+
+
+## XGBOOST
+
+Este modelo se debe a una variante de gradient bosting que trata de reducir el sobreajuste del modelo. Para este modelo los parametos seran los mimso a demas de gamma (constante de regularización). Seguimos utilizando la validacion cruzada en 4 grupos y manteniendo la mism semilla de modelos anteriores.
+
+```{r}
+xgbmgrid <- expand.grid( min_child_weight=c(5,10,20), 
+                         eta=c(0.1,0.05,0.03,0.01,0.001), 
+                         nrounds=c(100,500,1000,5000),
+                       max_depth=6,gamma=0,colsample_bytree=1,subsample=1)
+
+control <- trainControl(method = "cv",number=4,savePredictions = "all", 
+                        classProbs=TRUE)
+
+xgbm <- train(factor(stroke) ~ age + avg_glucose_level + hypertension.0 
+              +  work_type.Self.employed + smoking_status.smokes 
+              + heart_disease.0,
+              data=stroke_data, method="xgbTree",trControl=control,
+              tuneGrid=xgbmgrid,verbose=FALSE) 
+
+xgbm
+plot(xgbm)
+
+```
+Como la variante anterior podemos observar que el mejor modelo es igualmente el que se obtiene con los mismos parametros, y brindandonos un accuracy de 0.9576290:
+
+eta/shrinkage = 0.015, min_child_weight/minobsinnode = 5,  nrounds/trees = 100
+
+Con respecto a otros parametros del modelo como ganma la mejor opcion despues de probarlo es con un valor de 0.
+
+## SVM
+En este grupo podemos diferenciar tres modelos el SVM basico o lineal, el SVM Polinomial o SVM RBF, dependiendo de los metodos de separacion empleados.
+
+### SVM linear
+
+En este metodo conservamos la misma semilla y los mimos grupos para la validacion cruzada. Para este mudelo el tuneo mas a tener en cuenta que modemos hacer es con el parametro C (la constante de regularización)
+
+```{r}
+SVMgrid<-expand.grid(C=c(0.0001,0.001,0.01,0.05,0.1,0.2,0.5,1,2,5,10))
+
+control<-trainControl(method = "cv",number=4,savePredictions = "all")
+
+SVM_line <- train(data=stroke_data, factor(stroke) ~ age + avg_glucose_level 
+                  + hypertension.0 + work_type.Self.employed 
+                  + smoking_status.smokes + heart_disease.0,
+                  method="svmLinear",trControl=control,
+                  tuneGrid=SVMgrid,verbose=FALSE)
+
+# SVM_line
+SVM_line$results
+plot(SVM_line$results$C,SVM_line$results$Accuracy)
+```
+
+Para este modelo podemos comprobar tanto en la tabla como en el gráfico, con todas obtenemos el mismo valor de accuracy, esto puede deberse a que los datos podrían quedar bastante diferenciados en dos clúster entre otras cosas, por ello he decidico escoger la menor C, es decir C = 1e-04.
+
+### SVMPoly
+
+Para este SVM añadimos la escala y el grado del polinomio para poder hacer la separación. La semilla y los grupos de validacion cruzada sera la misma a las anteriores.
+
+Tras pruebas en la integracion para poder construir mas rapidamente el Pmarkdown
+he decidido poner en el grid solo los parametros mas destacables para pintar su traza en la gráfica
+
+```{r}
+
+SVMgrid<-expand.grid(C=c(0.0001,0.1,1,10),
+                     degree=c(2,3),scale=c(0.1,1,5))
+
+control<-trainControl(method = "cv",
+                      number=2,savePredictions = "all")
+
+
+SVM_Poly <- train(data=stroke_data,factor(stroke) ~ age + avg_glucose_level 
+                  + hypertension.0 + work_type.Self.employed 
+                  + smoking_status.smokes + heart_disease.0,
+                  method="svmPoly",trControl=control,
+                  tuneGrid=SVMgrid,verbose=FALSE)
+
+SVM_Poly
+# plot
+dat<-as.data.frame(SVM_Poly$results)
+ggplot(dat, aes(x=factor(C), y=Accuracy,
+                color=factor(degree),pch=factor(scale))) +
+  geom_point(position=position_dodge(width=0.5),size=3)
+
+```
+
+Tras  la ejecucion y tuneado de parametros, viendo el output del modelo y la grafica podemos concluir que:
+
+- El parametro C debera de tener un valor 1e-04
+
+- El grado polinomial apropiado es de 2
+
+- La escala que debemos tomar para construir nuestro modelo es de 0.01
+
+### SVMRBF
+
+Para este SVM Radial (no linial) añadimos sigma, con el cual trataremos de tunear este modelo. La semilla y los grupos de validacion cruzada sera la misma a las anteriores.
+
+```{r}
+SVMgrid<-expand.grid(C=c(0.0001,0.001,0.01,0.05,0.1,0.2,0.5,1,2,5,10,30),
+                     sigma=c(0.01,0.05,0.1,0.2,0.5,1,2,5,10,30))
+
+control<-trainControl(method = "cv",
+                      number=2,savePredictions = "all")
+
+SVM_Radial <- train(data=stroke_data, factor(stroke) ~ age + avg_glucose_level 
+                    + hypertension.0 + work_type.Self.employed 
+                    + smoking_status.smokes + heart_disease.0, 
+                    method="svmRadial",trControl=control,
+                    tuneGrid=SVMgrid,verbose=FALSE)
+
+SVM_Radial
+#plot
+dat<-as.data.frame(SVM_Radial$results)
+ggplot(dat, aes(x=factor(C), y=Accuracy,
+                color=factor(sigma))) +
+  geom_point(position=position_dodge(width=0.5),size=3)
+
+```
+Para este modelo como se indica en el output y apreciamos en la grafica sigma y C deben valer 0.2 y 2 respectivamente para lograr el mayor accuracy.
+
+# Modelos ganadores y ánalisis sesgo-varianza
+
+En este apartado, una vez el tuneadoo de nuestros modelos vamos a pasar realizar el analisis sesgo-varianza, para este apartado y la construccion de los modelos utilizaremos las funciones propuestas del profesor, las cuales nos brindaran las medias de accuracy en los modelos aplicando la validacion cruzada.
+
+Para todos los modelos construidos se van a utilizar los parametros mas adecuado tras el tuneo, con la misma semilla, ademas de, 4 grupos para la validacion cruzada repetida 5 veces.
+
+En este punto vamos a resolver los criterios del apartado b).
+
+Tambien elegiremos los candidatos para ser los posibles modelos ganadores.
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+#LOGISTICA
+source("cruzadas avnnet y log binaria.R")
+
+medias_model_1 <- cruzadalogistica(data=stroke_data,
+                    vardep="stroke",listconti= c("age", "avg_glucose_level",
+                      "hypertension.0","work_type.Self.employed", 
+                      "smoking_status.smokes", "heart_disease.0"),
+                    listclass=c(""), grupos=4,sinicio=1234967,repe=5)
+
+medias_model_1$modelo="Logística"
+
+
+# RED 
+medias_model_2 <- cruzadaavnnetbin(data=stroke_data,
+                     vardep="stroke",listconti= c("age", "avg_glucose_level",
+                        "hypertension.0","work_type.Self.employed", 
+                        "smoking_status.smokes", "heart_disease.0"),
+                     listclass=c(""),grupos=4,sinicio=1234967,repe=5,
+                     size=c(5),decay=c(0.1),repeticiones=5,itera=100,
+                     trace = TRUE)
+
+medias_model_2$modelo="avnnet1"
+
+
+# ARBOL
+source ("cruzada arbolbin.R")
+
+medias_model_3 <- cruzadaarbolbin(data=stroke_data,
+                    vardep="stroke",listconti= c("age", "avg_glucose_level",
+                       "hypertension.0","work_type.Self.employed", 
+                       "smoking_status.smokes", "heart_disease.0"),
+                    listclass=c(""),grupos=4,sinicio=1234967,repe=5,
+                    cp=c(0.1),minbucket =30)
+
+medias_model_3$modelo="arbol"
+
+
+# BANGGIN
+source ("cruzada rf binaria.R")
+
+medias_model_4 <- cruzadarfbin(data=stroke_data,
+                   vardep="stroke",listconti= c("age", "avg_glucose_level",
+                      "hypertension.0","work_type.Self.employed", 
+                      "smoking_status.smokes", "heart_disease.0"),
+                   listclass=c(""),grupos=4,sinicio=1234967,repe=5,
+                   nodesize=10,mtry=6,ntree=1000,replace=TRUE)
+
+medias_model_4$modelo="bagging"
+
+
+# RANDOM FORES
+medias_model_5 <- cruzadarfbin(data=stroke_data,
+                     vardep="stroke",listconti= c("age", "avg_glucose_level",
+                        "hypertension.0","work_type.Self.employed", 
+                        "smoking_status.smokes", "heart_disease.0"),
+                     listclass=c(""),grupos=4,sinicio=1234967,repe=5,
+                     nodesize=12,mtry=3,ntree=500,replace=TRUE)
+
+medias_model_5$modelo="rf"
+
+
+# GRADIENT BOOSTING
+source ("cruzada gbm binaria.R")
+
+medias_model_6 <- cruzadagbmbin(data=stroke_data,
+                    vardep="stroke",listconti= c("age", "avg_glucose_level",
+                       "hypertension.0","work_type.Self.employed", 
+                       "smoking_status.smokes", "heart_disease.0"),
+                    listclass=c(""),grupos=4,sinicio=1234967,repe=5,
+                    n.minobsinnode=5,shrinkage=0.015,n.trees=100,
+                    interaction.depth=2)
+
+medias_model_6$modelo="gbm"
+
+
+# XGBOOST
+source ("cruzada xgboost binaria.R")
+
+medias_model_7 <-cruzadaxgbmbin(data=stroke_data,
+                    vardep="stroke",listconti= c("age", "avg_glucose_level",
+                       "hypertension.0","work_type.Self.employed", 
+                       "smoking_status.smokes", "heart_disease.0"),
+                    listclass=c(""),grupos=4,sinicio=1234967,repe=5,
+                    min_child_weight=5,eta=0.015,nrounds=100,max_depth=6,
+                    gamma=0,colsample_bytree=1,subsample=1,
+                    alpha=0,lambda=0,lambda_bias=0)
+
+medias_model_7$modelo="xgbm"
+
+
+# SVM
+
+# SVM linear
+source ("cruzada SVM binaria lineal.R")
+
+medias_model_8 <- cruzadaSVMbin(data=stroke_data,
+                    vardep="stroke",listconti= c("age", "avg_glucose_level",
+                       "hypertension.0","work_type.Self.employed", 
+                       "smoking_status.smokes", "heart_disease.0"),
+                    listclass=c(""),grupos=4,sinicio=1234967,repe=5,
+                    C=0.0001)
+
+medias_model_8$modelo="SVMLin"
+
+
+# SVMPoly
+source ("cruzada SVM binaria polinomial.R")
+
+medias_model_9 <- cruzadaSVMbinPoly(data=stroke_data,
+                    vardep="stroke",listconti= c("age", "avg_glucose_level",
+                     "hypertension.0","work_type.Self.employed", 
+                     "smoking_status.smokes", "heart_disease.0"),
+                    listclass=c(""),grupos=4,sinicio=1234967,repe=5,
+                    C=0.0001,degree=2,scale=0.01)
+
+medias_model_9$modelo="SVMPoly"
+
+
+# SVMRBF
+source ("cruzada SVM binaria RBF.R")
+
+medias_model_10 <- cruzadaSVMbinRBF(data=stroke_data,
+                      vardep="stroke",listconti= c("age", "avg_glucose_level",
+                       "hypertension.0","work_type.Self.employed", 
+                       "smoking_status.smokes", "heart_disease.0"),
+                      listclass=c(""),grupos=4,sinicio=1234967,repe=5,
+                      C=2,sigma=0.2)
+
+medias_model_10$modelo="SVMRBF"
+```
+
+Una vez creados estos modelos con validacion cruzada vamos a pintar todos los resultados obtendios analizand sesgo y varianza de cada modelo, además veremos que modelo es el mas apropiado para nuestros datos.
+
+```{r}
+## PINTAR DATOS SESGO-VARIANZA
+union_models<-rbind(medias_model_1,medias_model_2,medias_model_3,
+                    medias_model_4,medias_model_5,medias_model_6,
+                    medias_model_7,medias_model_8,medias_model_9,
+                    medias_model_10)
+# tasa fallos 
+boxplot(data=union_models,tasa~modelo,col="pink",main="TASA FALLOS")
+# auc
+boxplot(data=union_models,auc~modelo,col="pink",main="AUC")
+```
+
+Empezamos examinando la tasa de fallos donde podemos ver como el modelo con mayort tasa de fallos y mas varianza es bagging, por otro lado llama la atención como SVM Radial consigue en algunos casos una tasa de fallos meneor que el resto.
+
+Sin embargo, al contrario de lo qe se contempla en la grafica AUC, podemos comprobar como cualquier metodo de SVM no es apropiado para la prediccion de este tipo de datos. Podemos observar como los modelos de regresion logistica, redes neuronales y gbm/xgmb estan compitiendo por ser el mejor modelo, a continuacion vemos una grafica ampliada solo con estos modelos.
+
+
+```{r}
+## ZOOM
+union_models_zoom<-rbind(medias_model_1,medias_model_2,
+                    medias_model_6,medias_model_7)
+# tasa fallos 
+boxplot(data=union_models_zoom,tasa~modelo,col="pink",main="TASA FALLOS")
+# auc
+boxplot(data=union_models_zoom,auc~modelo,col="pink",main="AUC")
+```
+
+Podemos ver que pese a tener todos un AUC bastante elvado por encima de 0.8, los modelos de regresión logística y la red neuronal son los mas interesantes para nuestros datos, en este caso he decidido quedarme con el modelo de regresion logistica, debido a su baja varianza y ya que es un modelo mas estable y menos complejo que el construido con una red.
+
+# Ensamblado
+
+Para finalizar este ejercicio queda probar con la ensamblacion de modelos, y si la combinación de modelos anteriores, podría ser una opcion interesante para generar un modelo predictivo mas potente para nuestros datos. En este punto cumpliremos con los objetivos del apartado f).
+
+Para esta ensamblado de modelos solo vamos a aplicar el metodo de promediado, es decir este ensamblado se calculará en base a las medias de los modelos que queramos combinar.
+
+*Otro metodo de ensamblado, que no va ser aplicada en este ejercicio sería utilizar como variables imput las predicciones de los modelos previamete calculado y generando un modelo de prediccion nuevo*
+
+Este promediado nos ayudará a rebajar la varianza de los modelos ya calculados. 
+
+He decidido hacer el ensamblado combinando los 4 modelos ya propuestos como posibles ganadores en el apartado anterior, que son: la red, regresion logística, gradient boosting y xgboosting.
+
+```{r, message=FALSE, results='hide', warning=FALSE}
+source("cruzadas ensamblado binaria fuente.R")
+
+vardep<-"stroke"
+listconti<-c("age", "avg_glucose_level",
+             "hypertension.0","work_type.Self.employed", 
+             "smoking_status.smokes", "heart_disease.0")
+listclass<-c("")
+grupos<-4
+sinicio<-1234967
+repe<-5
+
+# REGRESION LOGISTICA
+medias_model_1_en <- cruzadalogistica(data=stroke_data,
+                      vardep=vardep,listconti=listconti,
+                      listclass=listclass,grupos=grupos,
+                      sinicio=sinicio,repe=repe)
+
+medias_model_1_bis<-as.data.frame(medias_model_1_en[1])
+medias_model_1_bis$modelo <- "logistica_en"
+predi_model_1 <- as.data.frame(medias_model_1_en[2])
+predi_model_1$logistica_en <- predi_model_1$Yes
+
+# RED
+medias_model_2_en <- cruzadaavnnetbin(data=stroke_data,
+                      vardep=vardep,listconti=listconti,
+                      listclass=listclass,grupos=grupos,
+                      sinicio=sinicio,repe=repe, 
+                      size=c(5),decay=c(0.1),repeticiones=5,itera=100,)
+
+medias_model_2_bis<-as.data.frame(medias_model_2_en[1])
+medias_model_2_bis$modelo <- "avnnet_en"
+predi_model_2 <- as.data.frame(medias_model_2_en[2])
+predi_model_2$avnnet_en <- predi_model_2$Yes
+
+# GRADIENT BOOSTING
+medias_model_6_en <- cruzadagbmbin(data=stroke_data,
+                        vardep=vardep,listconti=listconti,
+                        listclass=listclass,grupos=grupos,
+                        sinicio=sinicio,repe=repe,
+                        n.minobsinnode=5,shrinkage=0.015,n.trees=100,
+                        interaction.depth=2)
+
+medias_model_6_bis<-as.data.frame(medias_model_6_en[1])
+medias_model_6_bis$modelo <- "gbm_en"
+predi_model_6 <- as.data.frame(medias_model_6_en[2])
+predi_model_6$gbm_en <- predi_model_6$Yes
+
+# XGBOOST
+medias_model_7_en <- cruzadaxgbmbin(data=stroke_data,
+                      vardep=vardep,listconti=listconti,
+                      listclass=listclass,grupos=grupos,
+                      sinicio=sinicio,repe=repe,
+                      min_child_weight=5,eta=0.015,nrounds=100,max_depth=6,
+                      gamma=0,colsample_bytree=1,subsample=1,
+                      alpha=0,lambda=0,lambda_bias=0)
+
+medias_model_7_bis<-as.data.frame(medias_model_7_en[1])
+medias_model_7_bis$modelo <- "xgbm_en"
+predi_model_7 <- as.data.frame(medias_model_7_en[2])
+predi_model_7$xgbm_en <- predi_model_7$Yes
+
+union_models_bis<-rbind(medias_model_1_bis,medias_model_2_bis,
+                        medias_model_6_bis,medias_model_7_bis)
+
+```
+Calculados los modelos de nuevo nos queda pintar la tasa de fallos y AUC, como podemos ver en los siguientes graficos, los resultados obtenidos son iguales que los anteriores. Con la diferencia de haber usado otras funciones para su constuccion, esto se debe a las variables extra que aporta para el ensamblado promediado de los moedelos.
+
+```{r}
+# PLOT
+par(cex.axis=0.5)
+boxplot(data=union_models_bis,tasa~modelo)
+boxplot(data=union_models_bis,auc~modelo)
+```
+
+Procedemos a calcular los modelos ensamblado.
+
+He considerado crear 3 modelos ensamblados para probar esta herramienta, aunque considero que con la poca varianza de la regresion logísstica, tasa de fallos y el AUC, sería un modelo bastante bueno y robusto, para nuestros datos.
+
+```{r}
+# Empezamos con el ensamblado
+uni_predi<-cbind(predi_model_1,predi_model_2,predi_model_6,predi_model_7)
+uni_predi<- uni_predi[, !duplicated(colnames(uni_predi))]
+
+# promedios
+uni_predi$predi_11 <- (uni_predi$logistica_en+uni_predi$avnnet_en)/2
+uni_predi$predi_12 <- (uni_predi$avnnet_en+uni_predi$gbm_en
+                       +uni_predi$xgbm_en)/3
+uni_predi$predi_13 <- (uni_predi$logistica_en+uni_predi$avnnet_en
+                        +uni_predi$gbm_en+uni_predi$xgbm_en)/4
+```
+
+A continuacion se muestra un pipeline de codigo necesario para poder procesar los modelos de ensamblado.
+```{r, message=FALSE, results='hide', warning=FALSE}
+# PROCESADO DE ENSAMBLADOS
+listado<-c("logistica_en", "avnnet_en",
+           "gbm_en", "xgbm_en", "predi_11", 
+           "predi_12",  "predi_13")
+
+# Defino funcion tasafallos
+tasafallos<-function(x,y) {
+  confu<-confusionMatrix(x,y)
+  tasa<-confu[[3]][1]
+  return(tasa)
+}
+
+auc<-function(x,y) {
+  curvaroc<-roc(response=x,predictor=y)
+  auc<-curvaroc$auc
+  return(auc)
+}
+
+# Se obtiene el numero de repeticiones CV y se calculan las medias por repe en
+# el data frame medias0
+repeticiones<-nlevels(factor(uni_predi$Rep))
+uni_predi$Rep<-as.factor(uni_predi$Rep)
+uni_predi$Rep<-as.numeric(uni_predi$Rep)
+
+
+medias0<-data.frame(c())
+for (prediccion in listado)
+{
+  uni_predi$proba<-uni_predi[,prediccion]
+  uni_predi[,prediccion]<-ifelse(uni_predi[,prediccion]>0.5,"Yes","No")
+  for (repe in 1:repeticiones)
+  {
+    paso <- uni_predi[(uni_predi$Rep==repe),]
+    pre<-factor(paso[,prediccion])
+    archi<-paso[,c("proba","obs")]
+    archi<-archi[order(archi$proba),]
+    obs<-paso[,c("obs")]
+    tasa=1-tasafallos(pre,obs)
+    t<-as.data.frame(tasa)
+    t$modelo<-prediccion
+    auc<-suppressMessages(auc(archi$obs,archi$proba))
+    t$auc<-auc
+    medias0<-rbind(medias0,t)
+  }
+}
+
+```
+
+Por ultimo tras el procesado de los ensamblados vamso a pintar finalmente estos modelos para analizar tasa de fallos, AUC, sesgo y varianza, obtener las conclusiones pertinentes y seleccionar nuestro modelo ganador.
+
+```{r}
+# PLOT
+par(cex.axis=0.5,las=2)
+# FALLOS
+boxplot(data=medias0,tasa~modelo,col="pink",main="TASA FALLOS")
+# AUC
+boxplot(data=medias0,auc~modelo,col="pink",main="AUC")
+```
+
+Podemos ver como los algoritmos de arboles se quedan bastante por debajo del resto, por ello vamos a hacer "zoom" a los modelos calculados con la regresión lineal, red neuronal y los modelos ensamblado.
+
+```{r}
+# ZOOM
+listado_zoom<-c("logistica_en", "avnnet_en",
+               "predi_11", "predi_12", "predi_13")
+medias0$modelo<-as.character(medias0$modelo)
+mediasver<-medias0[medias0$modelo %in% listado_zoom,]
+mediasver$modelo <- with(mediasver,
+                         reorder(modelo,auc, median))
+
+# PLOT
+par(cex.axis=0.5,las=2)
+# FALLOS
+boxplot(data=mediasver,tasa~modelo,col="pink",main="TASA FALLOS")
+# AUC
+boxplot(data=mediasver,auc~modelo,col="pink",main='AUC')
+```
+
+En conclusión, podemos ver como la regresion logistica y el modelo de ensamblado con logistica y red, son los claros ganadores, aun que realmente sea en una escala de 0.001 por lo tanto podemos afirmar que los 4 modelos son buenos. 
+
+# Conclusión 
+
+Como modelo ganador, finalmente he decidido elegir el de regresión logística ya que pese a que el modelo de ensamblado estó un poco por encima en AUC el modelo de regrseión logística es un modelo claramente mucho mas sencillo y con una varianza bastante mas baja respecto al resto de modelos.
+
+Por último destacar que el modelo de ensamblado logistica y red es el que menor tasa de fallos presenta, aunque como he comentado anteriormente al ser una escala del tercer decimal, a penas tendria importancia y nos giamos por AUC como métrica mas importante y sencillez del modelo.
+
+
+
+

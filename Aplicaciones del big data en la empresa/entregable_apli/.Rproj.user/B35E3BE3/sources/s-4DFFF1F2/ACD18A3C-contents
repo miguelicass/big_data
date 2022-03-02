@@ -1,0 +1,429 @@
+---
+title: "Entregable"
+author: "Miguel Ángel Castaño Ibáñez"
+date: "4/10/2021"
+output: html_document
+---
+
+## Librerías
+Cargo todas las librerías utlilizadas para para este ejercicio
+
+```{r}
+suppressPackageStartupMessages({
+  library(dplyr)          # Manipulacion de datos 
+  library(data.table)     # Leer y procesar ultra-rapido
+  library(ggplot2)        # La librería grafica
+  library(inspectdf)      # EDAs automaticos
+  library(ranger)         # Fast randomForest
+  library(forcats)        # Tratar variables categoricas
+  library(tictoc)         # Calcular tiempos
+  library(missRanger)     # Fast imputation of NAs --- Finalmente no se usa
+  library(lubridate)      # Tratar formato fecha
+  library(Hmisc)          # para hacer el describe
+})
+```
+
+## Lectura ficheros
+
+Cargamos los ficheros donde están el conjunto de entrenamiento y el de test, ademas de tener un dataset solo el id y la variable objetivo
+
+```{r}
+dattrainOr    <- fread(file = "./data/train.csv", data.table = FALSE )
+dattrainLabOr <- fread(file = "./data/train_labels.csv", data.table = FALSE )
+dattestOr     <- fread(file = "./data/test.csv", data.table = FALSE  )
+```
+
+## EDA (Exploratory Data Analysis)
+
+A continuación, mostraremos una serie de graficas que tendran como objetivo ayudarnos para un primer analisis de nuestro dataset y empezar a tratarlo para finalmente obtener nuestro modelo de predicción.
+
+
+```{r}
+### inspectdf
+
+# Horizontal bar plot for categorical column composition
+x <- inspect_cat(dattrainOr)
+show_plot(x)
+
+# Correlation betwee numeric columns + confidence intervals
+x <- inspect_cor(dattrainOr)
+show_plot(x)
+
+# Bar plot of most frequent category for each categorical column
+x <- inspect_imb(dattrainOr)
+show_plot(x)
+
+# Bar plot showing memory usage for each column
+x <- inspect_mem(dattrainOr)
+show_plot(x)
+
+# Occurence of NAs in each column ranked in descending order
+x <- inspect_na(dattrainOr)
+show_plot(x)
+
+# Histograms for numeric columns
+x <- inspect_num(dattrainOr)
+show_plot(x)
+
+# Barplot of column types
+x <- inspect_types(dattrainOr)
+show_plot(x)
+
+```
+
+Tras el analisis de estas grafica llegamos a las siguiente conclusiones 
+
+- Tenemos 27 categóricas, 10 numéricas y 2 booleanas
+- Posible imputacion de los valores 0 en construction_year 
+- El campo gps_height tiene valores menores o iguales a 0 
+- En la posicion para las longitudes tenemos muchos outliers que valen 0 
+- Imputar los valores NAN en las dos categorias booleanas
+- En la poblacion tambien tenemos valores outliers cercanos a 300000
+- Tenemos una constante  para todos los valores de nuestro dataset: recorded_by 
+- Categoricas con demasiados valores
+
+
+### Tratamiento de datos
+Para tratar los datos vamos a juntar los dos conjuntos (train y test) en un dataset y operar con ellos
+
+```{r}
+data <- merge(dattrainOr, dattestOr, all = T, sort = F)
+
+```
+
+
+### Variables categoricas
+Vamos a revisar las variables categoricas, y descartar la que tiene valor contante (recorded_by) y por otro lado aquellas con demasiado valores diferentes (<3000). He considerado este número, ya que creo que el founder, instaler y scheme_name puede ser importante para el modelo, mientras que para las dos ultimas obtiene valores demasiado elevados, superiores a 20 mil.
+
+```{r}
+# char
+datcat_df <- data %>% select(where(is.character))
+
+# calculamos valores posibles de cada categorica
+numlev_df <- data.frame()
+for (i in 1:ncol(datcat_df)) {
+  col_tmp <- datcat_df[, i]
+  num_lev <- length(unique(col_tmp))
+  numlev_df[i, 1] <- names(datcat_df)[i]
+  numlev_df[i, 2] <- num_lev
+  # print(numlev_df)
+}
+names(numlev_df) <- c('vars', 'levels')
+numlev_df %>% arrange(levels)
+
+# descartamos < 300
+vars_gd <- numlev_df %>%
+  filter(levels < 3000, levels > 1) %>% 
+  select(vars)
+datcat_gd <- datcat_df[ , vars_gd$vars]
+
+```
+
+### Categoricas, numericas y booleanas
+Juntaremos las variables categoricas, booleanas y numericas en nuestro conjunto, además añadiremos las variable date_recorded
+
+```{r}
+# num
+datnum_df <- data %>% select(where(is.numeric))
+# merge
+datnumcat_df <- cbind(datnum_df, datcat_gd)
+
+# add bool
+datnumcat_df$permit <- data$permit
+datnumcat_df$public_meeting <- data$public_meeting
+
+# add date_recorded
+datnumcat_df$date_recorded <- data$date_recorded
+
+```
+
+### Variables iguales
+Vamos a tratar de eliminar las variables que podrian ser iguales. En mi caso yo he decidido quitar solamente quantity_group, ya que pese a que payment y payment_type tienen muchas columnas similares este ejercicio trata de obtener la prediccion mas acertada y no se centra en el numero de variables y tiempo de computo, porlo tanto estas nos pueden aportar algo de información
+
+```{r}
+
+#--- quantity y quantity_group  - Iguales
+unique(datnumcat_df$quantity)
+unique(datnumcat_df$quantity_group)
+all.equal(datnumcat_df$quantity, datnumcat_df$quantity_group)
+
+# #--- payment y payment_type  - Iguales # modelo 7
+# unique(datnumcat_df$payment)
+# unique(datnumcat_df$payment_type)
+# all.equal(datnumcat_df$payment, datnumcat_df$payment_type)
+# head(datnumcat_df[, c('payment', 'payment_type')])
+
+
+#elimino payment_type y quantity_group
+datnumcat_df$quantity_group <- NULL
+# datnumcat_df$payment_type <- NULL
+
+
+# No los estraigo (modelo 6)
+
+#--- management  - Iguales
+# unique(datnumcat_df$management)
+# unique(datnumcat_df$management_group)
+
+# #--- extraction_type  - Iguales
+# unique(datnumcat_df$extraction_type)
+# unique(datnumcat_df$extraction_type_group)
+# unique(datnumcat_df$extraction_type_class)
+# all.equal(datnumcat_df$extraction_type, datnumcat_df$extraction_type_group)
+# 
+# datnumcat_df$management_group <- NULL
+# 
+# datnumcat_df$extraction_type <- NULL
+# datnumcat_df$extraction_type_group <- NULL
+
+
+```
+
+### Imputamos datos
+
+Imputamos los valores missing (NAs) con missRanger, estos seran:
+
+- construction_year == 0, ya que son valores anomalos, y posiblemente se trate de observaciones donde no se han registrado su fecha
+
+- longitude = 0 (en nuestro caso he puesto menor de 10 por si quedaba algun valor irregular). Teniendo en cuenta que las bombas estan aproimadamente en una coordenada cercanas a 30, ya que perteneceran al mismo territorio, por lo tanto tienen que ser valores cercanos y con una distribucion normal.
+
+- gps_height == 0 o negativo, ya que considero que para zonas donde esten iguales mas bajas que el nivel del mar quizas no sea necesario una bomba y por tanto puede ser un error 
+
+```{r}
+
+# construction_year ( == 0 -> NAs)
+datnumcat_df$fe_construction_year <- datnumcat_df$construction_year
+datnumcat_df$fe_construction_year <- ifelse(
+  datnumcat_df$fe_construction_year == 0,
+  NA,
+  datnumcat_df$fe_construction_year
+)
+
+# longitude (< 10 -> NAs)
+datnumcat_df$fe_longitude <- datnumcat_df$longitude
+datnumcat_df$fe_longitude <- ifelse(
+  datnumcat_df$fe_longitude < 10,
+  NA,
+  datnumcat_df$fe_longitude
+)
+
+# gps_height ( Negativos -> NAs)
+datnumcat_df$fe_gps_height <- datnumcat_df$gps_height
+datnumcat_df$fe_gps_height <- ifelse(
+  datnumcat_df$fe_gps_height < 1,
+  NA,
+  datnumcat_df$fe_longitude
+)
+
+# quito las variables imputadas
+# no eliminamos todavia para FEATURE
+# datnumcat_df$longitude <- NULL
+# datnumcat_df$construction_year <- NULL 
+# datnumcat_df$gps_height <- NULL
+
+# missRanger
+datnumcat_df <- missRanger(
+  datnumcat_df,
+  pmm.k = 3,
+  num.trees = 100
+)
+
+```
+
+## Feature engineering
+El siguiente paso es formar variables en base a las que ya tenemos, por ello antes de eliminar todas las variables imputadas anteriores he decidido tratar de obtener nuevas variables
+
+Esta primera se trata de la diferencia del tiempo, en días, que ha tardado desde que se recogió el dato hasta la última observación.
+```{r}
+# data_recorded 
+datnumcat_df$fe_date_recorded <- as.numeric(as.Date('2013-12-03') - as.Date(data$date_recorded))
+```
+
+Aquí obtenemos la los años que hace que fue construida, tomando como referencia el años siguiente a la ultima construida 
+```{r}
+# age
+datnumcat_df$fe_age <- 2014 - datnumcat_df$construction_year
+```
+
+La distancia al ecuador, esto podria ser de utilidad, por ejemplo si hay alguna actividad tectonica por la zona, etc.
+```{r}
+# distancia al ecuador
+datnumcat_df$fe_dist <- sqrt( datnumcat_df$fe_longitude^2 + datnumcat_df$latitude^2)
+```
+
+Por último, he decidido obtener la frecuencia de las variables categoricas más importantes, para hecho he combertid oel dataframe en un datatable para operar con el más rapidamente y su posterior reconversion a dataframe
+```{r}
+# fecuencia de las variables categoricas mas importantes
+# to datatable
+datnumcat_dt <- as.data.table(datnumcat_df)
+# add
+datnumcat_dt[ , fe_funder                 := .N , by =  funder ]
+datnumcat_dt[ ,  fe_quantity              := .N , by =  quantity]
+datnumcat_dt[ ,  fe_extraction_type_class := .N , by =  extraction_type_class]
+datnumcat_dt[ ,  fe_payment               := .N , by =  payment]
+datnumcat_dt[ ,  fe_source                := .N , by =  source]
+datnumcat_dt[ ,  fe_extraction_type_group := .N , by =  extraction_type_group]
+datnumcat_dt[ ,  fe_extraction_type       := .N , by =  extraction_type]
+datnumcat_dt[ ,  fe_region                := .N , by =  region]
+datnumcat_dt[ ,  fe_lga                   := .N , by =  lga]
+datnumcat_dt[ ,  fe_ward                  := .N , by =  ward]
+datnumcat_dt[ ,  fe_scheme_name           := .N , by =  scheme_name] 
+# datnumcat_dt[ ,  fe_recorded_by           := .N , by = recorded_by]
+# datnumcat_dt[ ,  fe_source_class          := .N , by = source_class]
+# datnumcat_dt[ ,  fe_management_group      := .N , by =  management_group]
+# datnumcat_dt[ ,  fe_quantity_group        := .N , by =  quantity_group]
+# datnumcat_dt[ ,  fe_quality_group         := .N , by =  quality_group]
+# datnumcat_dt[ ,  fe_waterpoint_type_group := .N , by =  waterpoint_type_group]
+# datnumcat_dt[ ,  fe_payment_type          := .N , by =  payment_type]
+# datnumcat_dt[ ,  fe_source_type           := .N , by =  source_type]
+# datnumcat_dt[ ,  fe_waterpoint_type       := .N , by =  waterpoint_type]
+# datnumcat_dt[ ,  fe_water_quality         := .N , by =  water_quality ]
+# datnumcat_dt[ ,  fe_basin                 := .N , by =  basin]
+# datnumcat_dt[ ,  fe_management            := .N , by =  management]
+# datnumcat_dt[ ,  fe_scheme_management     := .N , by =  scheme_management]
+# datnumcat_dt[ ,  fe_installer             := .N , by =  installer]
+# datnumcat_dt[ ,  fe_subvillage            := .N , by =  subvillage]
+# datnumcat_dt[ ,  fe_wpt_name              := .N , by =  wpt_name]
+# to dataframe
+datnumcat_df <- as.data.frame(datnumcat_dt)
+# No elimino las variables originales, debido a la su importancia
+```
+
+Una vez creadas las nuevas variables es hora de borrar las variables imputadas y generar nuestro modelo.
+```{r}
+# elimino las variables imputadas
+datnumcat_df$longitude <- NULL
+datnumcat_df$construction_year <- NULL
+datnumcat_df$gps_height <- NULL
+```
+
+
+## MODELO
+El siguiente paso es separar, ya con de dataset tratado, los conjuntos train y test.
+
+Obtenemos el punto de corte, para dividir nuestro dataset y mergeamos la variable objetivo al conjunto de entrenamiento.
+```{r}
+## Separamos datos train y test
+# length train
+length(dattrainOr[,1])
+# length test
+length(dattestOr[,1])
+# length both joined
+length(datnumcat_df[,1])
+# cut
+length(datnumcat_df[,1])-length(datnumcat_df[,1])
+
+# Separamos los conjuntos train y test
+dattrainOr_imp <- datnumcat_df[1:59400,]
+dattestOr_imp <- datnumcat_df[59401:74250,]
+
+
+## Variable objetivo
+# merge del id
+dattrainOrLab_obj_imp <- merge(
+  dattrainOr_imp, dattrainLabOr,
+  by.x = c('id'), by.y = c('id'),
+  sort = FALSE
+)
+
+## status_group as factor para el random forest
+dattrainOrLab_obj_imp$status_group <- as.factor(dattrainOrLab_obj_imp$status_group)
+
+```
+
+Genero el modelo con el algoritmo random forest, que tras aplicar un Grid Search decidí para los paramentros mtry y num.trees,  5 y 600 respectivamente.
+
+Aplico la funcion proporcionada por el paquete ranger para obtener mi modelo.
+```{r}
+## Genero el model
+tic()
+my_model <- ranger( 
+  status_group ~ . , 
+  importance = 'impurity',
+  num.trees = 600,
+  mtry = 5,
+  data = dattrainOrLab_obj_imp,
+  seed = 67583
+)
+toc()
+```
+
+El acierto esperado lo podemos calcular restandole a 1 el error estimado que es según randomforest de:
+```{r}
+# acierto_estimado -> 1 - error_estimado
+acierto <- 1 - my_model$prediction.error
+acierto
+
+```
+  
+Para finalizar antes de generar la predicción con el conjunto test vamos a pintar la importancia de las variables para generar nuestro modelo
+```{r}
+### Pintar importancia de variables
+## obtengo  importancia 
+impor_df <- as.data.frame(my_model$variable.importance)
+names(impor_df)[1] <- c('Importance')
+impor_df$vars <- rownames(impor_df)
+# borro los ids(variables ya copiadas en columna)
+rownames(impor_df) <- NULL
+## pinto la importancia
+ggplot(impor_df, aes(fct_reorder(vars, Importance), Importance)) +
+  geom_col(group = 1, fill = "darkred") +
+  coord_flip() + 
+  labs(x = 'Variables', y = 'Importancia', title = 'Importancia Variables') +
+  theme_bw()
+```
+## Predicciones
+
+Aplico la funcion predict para posteriormente guardar ese dataset en un fichero .csv y su posteriror subida a la plataforma: https://www.drivendata.org/competitions/7/pump-it-up-data-mining-the-water-table/
+```{r}
+## get prediction
+my_pred <- predict(my_model, dattestOr_imp)
+
+## file for submission
+my_sub <- data.table(
+  id = dattestOr_imp$id,
+  status_group = my_pred$predictions
+)
+
+## save submission
+fwrite(my_sub, file = "./submissions/sub_entregable_final.csv" )
+
+```
+
+En este trozo de texto a continuacion podemos ver las predicciones de todos los modelos generados, tanto el acierto estimado segun ranger como el resultado final una ves subido los datos drivendata. A continuacion se señalaran los ajustes hechos en cada modelo
+
+- Modelo 1: Devido a que no participe en la tarea en grupo el ultimo sabado por la mañana he decidido continuar desde nonde lo dejo el podelo ganador de clase, a ello le he añadido un limite superior de categoricas, es decir hasta 3000 y las dos variables booleanas, mejorando asi el resultado anterior.
+
+- Modelo 2: Este modelo pare del modelo anterior y decido imputar las variables NA (booleanas), y las que contienen outliers converitdos a NA, como es el caso de construction year y latitude. Este tambien mejora los datos del modelo anterior
+
+- Modelo 3: Para este modelo tambien decido imputar los valores outliers gps_height y por lo tanto obtengo mejor resultado
+
+- Modelo 4: En este otro modelo decido obtener la frecuencia de todas las categoricas, para mejorar asi tambien la prediccion.
+
+- Modelo 5: Partiendo del modelo anterior decido no calcular la fecuandia de las variables que tengan apenas importancia en el modelo 4, y con ello tambien consigo mejorar mi prediccion 
+
+- Modelo 6: este modelo quito otras variables tambien muy parecidad con cierta repeticion o que he considerado que ya estaban representadas por su gran correlacion, como pueden ser: extraction_type_group y extraction_type_class con extraction_type, y por otro lado, management_group con management_group. Este modelo no mejora la prediccion del modelo 5.
+
+- Modelo 7: Al no mejorar el modelo 6, decido volver al 5 e incluir las variables omitidas, ademas como es un concurso donde prima obtener la prediccion mayor y no el tiempo de computo decido añadir la variable payment_type, eliminada en clase. Así obtengo el que sera nuestro mi modelo ganador.
+
+- Modelo 8: Por último todas estos modelos han sido generados con los parametros: num.trees = 600 y mtry = 5, por ello decido hacer un grid search para intentar encontrar un modelo mejor y obtener una decimas o centesimas más de prediccion. Tras hacerlo y obtener un model con un error esperado peor, tras hacer la prediccion he obtenido un peor resultado, esto podria deberse a un sobreajuste del conjunto train.
+
+```{r}
+## my_models
+#       ranger      drivendata
+# 1 - 0.8175421   -   0.8165   - <3000 cat, bool
+# 2 - 0.8191582   -   0.8219   - imputar los restantes menos gps_height
+# 3 - 0.8188384   -   0.8246   - imputar tambien gps_height
+# 4 - 0.8189394   -   0.8244   - freq de todas la categoricas
+# 5 - 0.8186027   -   0.8249   - quito las categoricas no isada
+# 6 - 0.8173232   -   0.8242   - quito otras iguales
+# 7 - 0.8179630   -   0.8257   - back to 5 y añado payment_type (casi repetida)
+# 8 - 0.8182997   -   0.8256   -  for para ver cual num_trees y mtry es mejor 
+
+# MODELO GANADOR -> 7
+```
+## Conclusiones
+
+Finalmente decido quedarme con el modelo 7 como modelo ganador, aun que condero que se podrian ganar algunas centesimas o incluso decimas tratando de cambiar la semilla (seed). Con todo hesto no he considerado mejorar mi modelo por que 0.8257 es un numero bastante elevado acercandose al record de 0.8290. A demás, tambien considero que es un resultado bastante satisfactorio que podria llegar a producción.
+
+Otras alternativas a este algoritmo podria haber sido utilizar la libreria h20 vista en clase, peor ho he optado por ranger ya que me pare muy buena herramienta, sencilla y obtiene un valor vastante cercano al record anteriormente mencionado.

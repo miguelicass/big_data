@@ -1,0 +1,141 @@
+ANEXO
+
+WEBS DE DATASETS PARA APLICAR TÉCNICAS DE MACHINE LEARNING
+
+RECOMENDADOS PARA EMPEZAR, MUY BIEN ESTRUCTURADOS
+******************************************************************************
+https://archive.ics.uci.edu/ml/datasets.html
+https://sci2s.ugr.es/keel/datasets.php
+https://vincentarelbundock.github.io/Rdatasets/datasets.html
+******************************************************************************
+1) En uci y keel están los archivos ordenados por clasificación o regresión.
+******************************************************************************
+2) En la web Rdatasets_
+https://vincentarelbundock.github.io/Rdatasets/datasets.html
+Archivos de más de 1200 observaciones, lista elaborada por mí:
+
+Item                                  Rows            Cols    modelo
+BEPS                                  1525              10    clasificación
+Caravan                               5822              86    clasificación
+Gunnels                               1592              10    clasificación
+Hdma                                  2381              13    clasificación
+Hmda                                  2381              13    clasificación
+VerbAgg                               7584               9    clasificación
+WVS                                   5381               6    clasificación
+Wells                                 3020               5    clasificación
+YouthRisk2007                        13387               6    clasificación
+azcabgptca                            1959               6    clasificación
+dengue                                2000              13    clasificación
+flchain                               7874              11    clasificación
+mexico                                1359              33    clasificación
+mifem                                 1295              10    clasificación
+monica                                6367              12    clasificación
+ohio                                  2148               4    clasificación
+spam7                                 4601               7    clasificación
+student                               9679              13    clasificación
+turnout                               2000               5    clasificación
+voteincome                            1500               7    clasificación
+Car                                   4654              70    clasificación multiclase
+Chile                                 2700               8    clasificación multiclase
+Kakadu                                1827              22    clasificación multiclase
+msqR                                  6411              79    correspondencias
+colon                                 1858              16    cox
+cricketer                             5960               8    cox
+mgus2                                 1384              10    cox
+nwtco                                 4028               9    cox
+BudgetFood                           23972               6    regresión
+BudgetItaly                           1729              11    regresión
+BudgetUK                              1519              10    regresión
+Computers                             6259              10    regresión
+DoctorContacts                       20186              15    regresión
+HI                                   22272              13    regresión
+InstInnovation                        6208              25    regresión
+Males                                 4360              12    regresión
+Males                                 4360              12    regresión
+MathPlacement                         2696              16    regresión
+MedExp                                5574              15    regresión
+PatentsRD                             1629               7    regresión
+SLID                                  7425               5    regresión
+SaratogaHouses                        1728              16    regresión
+Schooling                             3010              28    regresión
+Snmesp                                5904               8    regresión
+Star                                  5748               8    regresión
+VietNamH                              5999              11    regresión
+Vocab                                30351               4    regresión
+Wage                                  3000              11    regresión
+Wages                                 4165              12    regresión
+Wages                                 4165              12    regresión
+Workinghours                          3382              12    regresión
+azpro                                 3589               6    regresión
+baseball                             21699              22    regresión
+diamonds                             53940              10    regresión
+mdvis                                 2227              13    regresión
+medpar                                1495              10    regresión
+nlschools                             2287               6    regresión
+rwm5yr                               19609              17    regresión
+science                               1385               7    regresión
+DoctorAUS                             5190              15    regresión muchos dep posibles ver web
+OFP                                   4406              19    regresión varias dependientes
+VietNamI                             27765              12    regresión y clasi
+Gestation                             1236              23    regresión y clasificación
+NCbirths                              1450              15    regresión y clasificación
+
+ZIPEADOS POCO EXPLICADOS
+
+http://biostat.mc.vanderbilt.edu/wiki/Main/DataSets?CGISESSID=10713f6d891653ddcbb7ddbdd9cffb79
+https://www.cs.waikato.ac.nz/ml/weka/datasets.html
+
+DATOS COMPLICADOS PERO INTERESANTES
+
+https://www.nature.com/sdata/
+http://www.inf.ed.ac.uk/teaching/courses/dme/html/datasets0405.html
+
+
+CONCURSOS
+
+https://www.kaggle.com/
+https://www.drivendata.org/competitions/
+http://www.chalearn.org/challenges.html
+https://www.kdd.org/kdd-cup
+
+
+
+
+
+
+
+LECTURA DE DATASETS UCI EN R U OTROS
+
+
+# 1) Verificar los separadores
+# 2) Verificar si los nombres están en la primera línea del archivo
+# 3) Poner en read.csv el separador y header=TRUE o FALSE)
+# 
+# Si el archivo no está en formato de tabla hay que hacer otras cosas
+
+EJEMPLOS
+
+# Archivo bank marketing después de descomprimir
+# bank<-read.csv("c:/bank-additional.csv",header=TRUE,sep = ";")
+
+
+#Archivo adult 
+#adult<-read.csv("http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data",
+ header=FALSE,sep=",")
+
+Como no hay nombres, hay que buscar, copiar y leerlos en el archivo adult.names:
+
+age: continuous.
+workclass: Private, Self-emp-not-inc, Self-emp-inc, Federal-gov, Local-gov, State-gov, Without-pay, Never-worked.
+fnlwgt: continuous.
+education: Bachelors, Some-college, 11th, HS-grad, Prof-school, Assoc-acdm, Assoc-voc, 9th, 7th-8th, 12th, Masters, 1st-4th, 10th, Doctorate, 5th-6th, Preschool.
+education-num: continuous.
+marital-status: Married-civ-spouse, Divorced, Never-married, Separated, Widowed, Married-spouse-absent, Married-AF-spouse.
+occupation: Tech-support, Craft-repair, Other-service, Sales, Exec-managerial, Prof-specialty, Handlers-cleaners, Machine-op-inspct, Adm-clerical, Farming-fishing, Transport-moving, Priv-house-serv, Protective-serv, Armed-Forces.
+relationship: Wife, Own-child, Husband, Not-in-family, Other-relative, Unmarried.
+race: White, Asian-Pac-Islander, Amer-Indian-Eskimo, Other, Black.
+sex: Female, Male.
+capital-gain: continuous.
+capital-loss: continuous.
+hours-per-week: continuous.
+native-country: United-States, Cambodia, England, Puerto-Rico, Canada, Germany, Outlying-US(Guam-USVI-etc), India, Japan, Greece, South, China, Cuba, Iran, Honduras, Philippines, Italy, Poland, Jamaica, Vietnam, Mexico, Portugal, Ireland, France, Dominican-Republic, Laos, Ecuador, Taiwan, Haiti, Columbia, Hungary, Guatemala, Nicaragua, Scotland, Thailand, Yugoslavia, El-Salvador, Trinadad&Tobago, Peru, Hong, Holand-Netherlands.

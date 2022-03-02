@@ -1,0 +1,191 @@
+---
+title: "test"
+author: "Miguel Ángel Castaño Ibáñez"
+date: "5/18/2021"
+output: pdf_document
+---
+
+# Librerías
+Cargo todas las librerías utlilizadas para para este ejercicio
+
+```{r}
+# LIBRERIES
+
+
+# install
+# install.packages('tinytex')
+# install.packages("reshape")
+
+# load
+suppressPackageStartupMessages({
+library(ggplot2)
+library(inspectdf)      # EDAs automaticos
+library(plotly)
+library(dummies)
+library(MASS)
+library(caret)
+library(plyr)
+library(reshape)
+library(randomForest)
+# library(tinytex)
+})
+```
+
+# Ejercicios
+
+A continuacion, los ejercicios propuestos a resolver en este modulo
+
+a) Se deben realizar pruebas suficientes para obtener una buena selección de variables, obteniendo uno o varios conjuntos de variables tentativos
+
+
+b) Se requiere la comparación entre los mejores algoritmos y regresión logística 
+
+
+c) Se comprobará el efecto de la variación de los parámetros básicos de cada
+algoritmo (tuneado) (número de nodos en redes, shrink en gradient boosting, etc.).
+
+
+d) Los algoritmos a utilizar son obligatoriamente y como mínimo:
++ Redes Neuronales
++ Regresión Logística
++ Bagging
++ Random Forest
++ Gradient Boosting
++ Support Vector Machines
+
+* También si se quiere y para comprender los datos se puede probar con un simple árbol pero no es obligatorio.
+
+
+e) Es necesario utilizar validación cruzada, validación cruzada repetida o como mínimo training/test repetido.
+
+
+f) Es necesario hacer alguna prueba de ensamblado.
+
+
+# Lectura ficheros
+Nuestro dataset contiene una muestra de 5000 pacientes de diferentes edades, donde podemos observar quien de ellos a sufrido un ictus. Este dataset presenta 12 variables, 11 inputs y una dependiente objetivo binaria.
+
+Fuente: *https://www.kaggle.com/fedesoriano/stroke-prediction-dataset*
+
+Cargamos los ficheros donde están el conjunto de entrenamiento y el de test, ademas de tener un dataset solo el id y la variable objetivo
+
+```{r}
+data <- read.csv("./healthcare-dataset-stroke-data.csv")
+```
+
+# Analisís exploratorio (EDA) 
+Antes de empezar a crear los modelos vamos a hacer un analisis exploratorio de nuestra variable por si fuera necesario, imputar valores o cambiar el tipo de alguna de estas.
+ 
+```{r}
+
+#compruebo los tipos
+str(data) 
+
+```
+
+Tras los resultados vistos en el apartado anterior podemos concluir a llevar a factor aquellas variables que consideramos categoricas, y transformar a "Yes/No", nuestra variable objetivo binaria.
+
+```{r, warning=FALSE}
+
+# transfromamos en yes or no la variable obj
+data$stroke<-ifelse(data$stroke==1,"Yes","No")
+
+# convert to factor
+data[,c(2,4,5,6,7,8,11,12)] <- lapply(data[,c(2,4,5,6,7,8,11,12)], factor)
+
+# convert to nummeric
+data$bmi <- as.numeric(data$bmi)
+
+# comprobar tipos
+str(data) 
+
+# Comprobar observaciones de la var objetivo
+length(filter(data, stroke == "Yes")[,1])
+length(filter(data, stroke == "No")[,1])
+
+
+```
+
+El numero de casos que si presentan ataque cerebral es muy pequeño respecto al numero de los que no, y esto prodria llevarnos a conclusiones sesgadas, pese a tener un accuracy bastante, por ello debemos ir con cuidado. Tras la eleccion del modelo seria conveniente comprobar este modelos con un dataset mas grande de datos.
+
+En segundo lugar vamos a comprobar las variables categoricas que hay, la correlacion de variable por si fuera necesario quitar alguna de estas y el numero de NAs.
+
+```{R}
+# Horizontal bar plot for categorical column composition
+x <- inspect_cat(data)
+show_plot(x)
+
+# Correlation betwee numeric columns + confidence intervals
+x <- inspect_cor(data)
+show_plot(x)
+
+# Occurence of NAs in each column ranked in descending order
+x <- inspect_na(data)
+show_plot(x)
+```
+
+
+# Feature engineering
+
+Nuestro primer paso para a aplicar feature engineering a nuestras variables es separarlas en continuas, categoricas y objetivo. La variable id no tiene relevancia en este dataset por ello he decidido dejarla fuera del analisis.
+```{r}
+# lista de variables
+# dput(names(data))
+list_int <- c("id")
+list_cont <- c("avg_glucose_level", "bmi", "age")
+list_cat <- c("gender", "hypertension", "heart_disease", "ever_married",
+              "work_type", "Residence_type", "smoking_status")
+var_dep <- c("stroke")
+col_var_dep<-data[,var_dep]
+```
+
+### Estandarización de variables continuas
+
+Estandarizamos las variables continuas con valores desde 0 hasta 1
+
+```{r}
+# calc estandarizacion
+means <-apply(data[,list_cont],2,mean,na.rm=TRUE)
+sds<-sapply(data[,list_cont],sd,na.rm=TRUE)
+
+# var continuas estandarizadas
+stroke_data <- scale(data[,list_cont], center = means, scale = sds)
+# stroke_data <- data.frame(cbind(stroke_data,col_var_dep))
+
+# union continuas y categoricas
+index_cont<-which(colnames(data)%in%list_cont) # index cont
+stroke_data<-cbind(stroke_data,data[,-index_cont]) # join
+```
+
+### Eliminacion de missings
+
+En lugar de imputar las observaciones missing he considerado eliminarlas del dataset a estudiar
+
+```{r}
+stroke_data<-na.omit(stroke_data,(!is.na(stroke_data)))
+
+# comprobamos suficientes observaciones YES y NO
+length(filter(stroke_data, stroke == "Yes")[,1])
+length(filter(stroke_data, stroke == "No")[,1])
+```
+
+### Dummies
+
+Vamos a aplicar dummies a las variables categoricas, tratandolas de convertir a binarias mediante metodologia one-hot, es decir valor 1 si se cumple la observacion para esa variable categoriaca y 0 cuando no.
+
+```{r, warning=FALSE}
+stroke_data<- dummy.data.frame(stroke_data, list_cat, sep = ".")
+
+#eliminamos los dummies pocos representados
+stroke_data$work_type.Never_worked <- NULL
+
+```
+
+He decidico eliminar las dummi work_type.Never_worked, ya que apenas hay observaciones para esta variable.
+
+Por ultimo para evitar futuros conflictos aplico la siguiente funcion, para cambiar el nombre de las columnas que puedan tener palabras reservadas.
+
+```{r}
+# Make Valid Column Names 
+colnames(stroke_data) <- make.names(colnames(stroke_data))
+```

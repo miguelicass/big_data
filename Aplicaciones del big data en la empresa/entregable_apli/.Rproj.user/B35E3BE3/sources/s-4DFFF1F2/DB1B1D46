@@ -1,0 +1,32 @@
+{
+    "id": "DB1B1D46",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1618673901349.0,
+    "source_on_save": false,
+    "relative_order": 5,
+    "properties": {
+        "expression": "dattrainLabOr",
+        "caption": "dattrainLabOr",
+        "totalObservations": 59400,
+        "displayedObservations": 59400,
+        "variables": 2,
+        "cacheKey": "30A85E94",
+        "object": "dattrainLabOr",
+        "environment": "",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=dattrainLabOr&cache_key=30A85E94&max_cols=50",
+        "preview": 0
+    },
+    "folds": "",
+    "lastKnownWriteTime": 3763115058524139571,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1618673901349,
+    "read_only": false,
+    "read_only_alternatives": []
+}

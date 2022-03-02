@@ -1,0 +1,32 @@
+{
+    "id": "D6991896",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1618598918534.0,
+    "source_on_save": false,
+    "relative_order": 6,
+    "properties": {
+        "expression": "dattrainOrLab_obj_imp",
+        "caption": "dattrainOrLab_obj_imp",
+        "totalObservations": 59400,
+        "displayedObservations": 59400,
+        "variables": 51,
+        "cacheKey": "8CD210E9",
+        "object": "dattrainOrLab_obj_imp",
+        "environment": "",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=dattrainOrLab_obj_imp&cache_key=8CD210E9&max_cols=50",
+        "preview": 0
+    },
+    "folds": "",
+    "lastKnownWriteTime": 0,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1618598918534,
+    "read_only": false,
+    "read_only_alternatives": []
+}
